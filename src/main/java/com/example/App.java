@@ -13,7 +13,12 @@ import com.fasterxml.jackson.datatype.joda.JodaModule;
 import com.itextpdf.text.Document;
 import com.itextpdf.text.DocumentException;
 import com.itextpdf.text.Paragraph;
+import com.itextpdf.text.pdf.PdfCopy;
+import com.itextpdf.text.pdf.PdfReader;
 import com.itextpdf.text.pdf.PdfWriter;
+
+import com.amazonaws.services.s3.model.ListObjectsV2Request;
+import com.amazonaws.services.s3.model.ListObjectsV2Result;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -21,7 +26,9 @@ import java.io.IOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 public class App implements RequestHandler<S3Event, Map<String, Object>> {
 
@@ -50,6 +57,21 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
 
             context.getLogger().log("Bucket name: " + bucketName);
             context.getLogger().log("Object key: " + objectKey);
+
+            // List the objects in the bucket
+            ListObjectsV2Request listObjectsV2Request = new ListObjectsV2Request().withBucketName(bucketName)
+                    .withPrefix("output/");
+            ListObjectsV2Result result = s3Client.listObjectsV2(listObjectsV2Request);
+            // Will get the list of keys in the bucket
+            List<String> keys = result.getObjectSummaries().stream().map(s3ObjectSummary -> s3ObjectSummary.getKey())
+                    .collect(Collectors.toList());
+
+            for (String key : keys) {
+                context.getLogger().log("Key: " + key);
+                if (key.startsWith(objectKey.substring(0, 3))) {
+                    return updateThePDFFile("output/" + key, context, bucketName, objectKey, key, response);
+                }
+            }
 
             // Download the file from S3
             context.getLogger().log("Starting the download of the file from S3");
@@ -87,7 +109,7 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
             context.getLogger().log("PDF uploaded to S3 successfully");
 
             response.put("statusCode", 200);
-            response.put("body", "File converted and uploaded successfully");
+            response.put("body", "File uploaded successfully");
         } catch (IOException | DocumentException e) {
             context.getLogger().log("Error during PDF conversion or upload: " + e.getMessage());
             response.put("statusCode", 500);
@@ -96,6 +118,58 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
             context.getLogger().log("General error: " + e.getMessage());
             response.put("statusCode", 400);
             response.put("body", "Error: " + e.getMessage());
+        }
+        return response;
+    }
+
+    public Map<String, Object> updateThePDFFile(String outBacket, Context context, String bucketName, String objectKey,
+            String key, Map<String, Object> response) {
+        try {
+            // Reading the text file content from s3
+            S3Object Texts3Objects = s3Client.getObject(bucketName, objectKey);
+            S3ObjectInputStream s3InputStreams = Texts3Objects.getObjectContent();
+            String TextfileContent = new String(s3InputStreams.readAllBytes(), StandardCharsets.UTF_8);
+            context.getLogger().log("Text File content: " + TextfileContent);
+
+            // Downloading and Reading the PDF file content from s3
+            S3Object PDFs3Object = s3Client.getObject(outBacket, key);
+            S3ObjectInputStream s3InputStream = PDFs3Object.getObjectContent();
+
+            // Updating the PDF content
+            context.getLogger().log("Updating pdf content " + s3InputStream.toString());
+            PdfReader pdfReader = new PdfReader(s3InputStream);
+            ByteArrayOutputStream pdfOutputStream = new ByteArrayOutputStream();
+            Document document = new Document();
+            PdfCopy copy = new PdfCopy(document, pdfOutputStream);
+            document.open();
+            copy.addDocument(pdfReader);
+            document.newPage();
+            for (String content : TextfileContent.split("\n")) {
+                document.add(new Paragraph(content));
+            }
+            document.close();
+            copy.close();
+
+            context.getLogger()
+                    .log("PDF content update completed and uploading pdf to s3" + pdfOutputStream.toString());
+
+            // Uploading the updated PDF to S3
+            byte[] pdfBytes = pdfOutputStream.toByteArray();
+            ByteArrayInputStream pdfInputStream = new ByteArrayInputStream(pdfBytes);
+            ObjectMetadata metadata = new ObjectMetadata();
+            metadata.setContentLength(pdfBytes.length);
+            metadata.setContentType("application/pdf");
+            s3Client.putObject(outBacket, key, pdfInputStream, metadata);
+            response.put("statusCode", 200);
+            response.put("body", "File updated and uploaded successfully");
+        } catch (IOException | DocumentException e) {
+            context.getLogger().log("Error during PDF conversion or upload from update pdf: " + e.getMessage());
+            response.put("statusCode", 500);
+            response.put("body", "Error from update pdf : " + e.getMessage());
+        } catch (Exception e) {
+            context.getLogger().log("General error from update pdf: " + e.getMessage());
+            response.put("statusCode", 400);
+            response.put("body", "Error from update pdf: " + e.getMessage());
         }
         return response;
     }
