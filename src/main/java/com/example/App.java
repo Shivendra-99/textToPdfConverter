@@ -97,7 +97,7 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
             // Create a PDF from the text content
             Document document = new Document();
             ByteArrayOutputStream pdfOutputStream = new ByteArrayOutputStream();
-            PdfWriter.getInstance(document, pdfOutputStream);
+            PdfWriter writer = PdfWriter.getInstance(document, pdfOutputStream);
             document.open();
             while ((line = reader.readLine()) != null) {
                 batchContent.append(line).append("\n");
@@ -114,6 +114,7 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
             }
             reader.close();
             document.close();
+            writer.close();
 
             context.getLogger().log("PDF conversion completed");
 
