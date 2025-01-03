@@ -67,6 +67,9 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
                     .collect(Collectors.toList());
 
             for (String key : keys) {
+                if(key.equals("output/")) {
+                    continue;
+                }
                 context.getLogger().log("Key: " + key);
                 String objectKeyContains=key.split("/")[1];
                 if (objectKeyContains.startsWith(objectKey.substring(0, 3))) {
