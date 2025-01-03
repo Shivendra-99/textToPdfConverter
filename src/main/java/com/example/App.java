@@ -16,7 +16,7 @@ import com.itextpdf.text.Paragraph;
 import com.itextpdf.text.pdf.PdfCopy;
 import com.itextpdf.text.pdf.PdfReader;
 import com.itextpdf.text.pdf.PdfWriter;
-
+import com.itextpdf.text.pdf.parser.PdfTextExtractor;
 import com.amazonaws.services.s3.model.ListObjectsV2Request;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
 
@@ -145,7 +145,7 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
             S3ObjectInputStream s3InputStream = PDFs3Object.getObjectContent();
 
             // Updating the PDF content
-            context.getLogger().log("Updating pdf content " + s3InputStream.toString());
+            context.getLogger().log("Updating pdf content " + new String(s3InputStream.readAllBytes(), StandardCharsets.UTF_8));
             PdfReader pdfReader = new PdfReader(s3InputStream);
             ByteArrayOutputStream pdfOutputStream = new ByteArrayOutputStream();
             Document document = new Document();
@@ -158,9 +158,18 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
             }
             document.close();
             copy.close();
+            pdfReader.close();
 
-            context.getLogger()
-                    .log("PDF content update completed and uploading pdf to s3" + pdfOutputStream.toString());
+             // Extract and log the content of the merged PDF
+            PdfReader mergedPdfReader = new PdfReader(new ByteArrayInputStream(pdfOutputStream.toByteArray()));
+            StringBuilder pdfContent = new StringBuilder();
+            for (int i = 1; i <= mergedPdfReader.getNumberOfPages(); i++) {
+                pdfContent.append(PdfTextExtractor.getTextFromPage(mergedPdfReader, i));
+            }
+            mergedPdfReader.close();
+            context.getLogger().log("Merged PDF content: " + pdfContent.toString());
+
+            context.getLogger().log("PDF content update completed and uploading pdf to s3" );
 
             // Uploading the updated PDF to S3
             byte[] pdfBytes = pdfOutputStream.toByteArray();
@@ -170,7 +179,7 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
             metadata.setContentType("application/pdf");
             s3Client.putObject(bucketName, outObject, pdfInputStream, metadata);
             response.put("statusCode", 200);
-            response.put("body", "File updated and uploaded successfully");
+            response.put("body", "File updated and uploaded successfully"+pdfOutputStream.toByteArray().toString());
         } catch (IOException | DocumentException e) {
             context.getLogger().log("Error during PDF conversion or upload from update pdf: " + e.getMessage());
             response.put("statusCode", 500);
