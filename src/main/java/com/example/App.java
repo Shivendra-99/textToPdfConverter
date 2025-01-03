@@ -20,9 +20,11 @@ import com.itextpdf.text.pdf.parser.PdfTextExtractor;
 import com.amazonaws.services.s3.model.ListObjectsV2Request;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -83,7 +85,9 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
             context.getLogger().log("Starting the download of the file from S3");
             S3Object s3Object = s3Client.getObject(bucketName, objectKey);
             S3ObjectInputStream s3InputStream = s3Object.getObjectContent();
-            String fileContent = new String(s3InputStream.readAllBytes(), StandardCharsets.UTF_8);
+           BufferedReader reader = new BufferedReader(new InputStreamReader(s3InputStream, StandardCharsets.UTF_8));
+            String line;
+           
 
             context.getLogger().log("Starting the conversion of the file to PDF");
 
@@ -92,7 +96,7 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
             ByteArrayOutputStream pdfOutputStream = new ByteArrayOutputStream();
             PdfWriter.getInstance(document, pdfOutputStream);
             document.open();
-            for (String line : fileContent.split("\n")) {
+            while ((line = reader.readLine()) != null) {
                 document.add(new Paragraph(line));
             }
             document.close();
@@ -159,6 +163,8 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
             document.close();
             copy.close();
             pdfReader.close();
+
+            context.getLogger().log("PDF content update completed");
 
              // Extract and log the content of the merged PDF
             PdfReader mergedPdfReader = new PdfReader(new ByteArrayInputStream(pdfOutputStream.toByteArray()));
