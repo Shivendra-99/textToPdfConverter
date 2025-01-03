@@ -87,6 +87,9 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
             S3ObjectInputStream s3InputStream = s3Object.getObjectContent();
            BufferedReader reader = new BufferedReader(new InputStreamReader(s3InputStream, StandardCharsets.UTF_8));
             String line;
+            StringBuilder batchContent = new StringBuilder();
+            int batchSize = 100; // Number of lines to batch together
+            int lineCount = 0;
            
 
             context.getLogger().log("Starting the conversion of the file to PDF");
@@ -97,8 +100,19 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
             PdfWriter.getInstance(document, pdfOutputStream);
             document.open();
             while ((line = reader.readLine()) != null) {
-                document.add(new Paragraph(line));
+                batchContent.append(line).append("\n");
+                lineCount++;
+                if (lineCount >= batchSize) {
+                    document.add(new Paragraph(batchContent.toString()));
+                    batchContent.setLength(0); // Clear the batch content
+                    lineCount = 0;
+                }
             }
+            // Add any remaining content
+            if (batchContent.length() > 0) {
+                document.add(new Paragraph(batchContent.toString()));
+            }
+            reader.close();
             document.close();
 
             context.getLogger().log("PDF conversion completed");
