@@ -68,8 +68,9 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
 
             for (String key : keys) {
                 context.getLogger().log("Key: " + key);
-                if (key.startsWith(objectKey.substring(0, 3))) {
-                    return updateThePDFFile("output/" + key, context, bucketName, objectKey, response);
+                String objectKeyContains=key.split("/")[1];
+                if (objectKeyContains.startsWith(objectKey.substring(0, 3))) {
+                    return updateThePDFFile(key, context, bucketName, objectKey, response);
                 }
             }
 
