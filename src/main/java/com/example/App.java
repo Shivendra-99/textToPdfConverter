@@ -71,8 +71,10 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
                     continue;
                 }
                 context.getLogger().log("Key: " + key);
-                String objectKeyContains=key.split("/")[1];
-                if (objectKeyContains.startsWith(objectKey.substring(0, 3))) {
+                String KeyContains=key.split("/")[1];
+                String objectKeyContains=objectKey.split("/")[1];
+
+                if (KeyContains.startsWith(objectKeyContains.substring(0, 3))) {
                     return updateThePDFFile(key, context, bucketName, objectKey, response);
                 }
             }
@@ -129,6 +131,9 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
     public Map<String, Object> updateThePDFFile(String outObject, Context context, String bucketName, String objectKey,
              Map<String, Object> response) {
         try {
+
+            context.getLogger().log("inside update pdf method");
+
             // Reading the text file content from s3
             S3Object Texts3Objects = s3Client.getObject(bucketName, objectKey);
             S3ObjectInputStream s3InputStreams = Texts3Objects.getObjectContent();
