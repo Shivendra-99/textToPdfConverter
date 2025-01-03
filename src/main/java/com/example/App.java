@@ -69,7 +69,7 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
             for (String key : keys) {
                 context.getLogger().log("Key: " + key);
                 if (key.startsWith(objectKey.substring(0, 3))) {
-                    return updateThePDFFile("output/" + key, context, bucketName, objectKey, key, response);
+                    return updateThePDFFile("output/" + key, context, bucketName, objectKey, response);
                 }
             }
 
@@ -122,8 +122,8 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
         return response;
     }
 
-    public Map<String, Object> updateThePDFFile(String outBacket, Context context, String bucketName, String objectKey,
-            String key, Map<String, Object> response) {
+    public Map<String, Object> updateThePDFFile(String outObject, Context context, String bucketName, String objectKey,
+             Map<String, Object> response) {
         try {
             // Reading the text file content from s3
             S3Object Texts3Objects = s3Client.getObject(bucketName, objectKey);
@@ -132,7 +132,7 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
             context.getLogger().log("Text File content: " + TextfileContent);
 
             // Downloading and Reading the PDF file content from s3
-            S3Object PDFs3Object = s3Client.getObject(outBacket, key);
+            S3Object PDFs3Object = s3Client.getObject(bucketName, outObject);
             S3ObjectInputStream s3InputStream = PDFs3Object.getObjectContent();
 
             // Updating the PDF content
@@ -159,7 +159,7 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
             ObjectMetadata metadata = new ObjectMetadata();
             metadata.setContentLength(pdfBytes.length);
             metadata.setContentType("application/pdf");
-            s3Client.putObject(outBacket, key, pdfInputStream, metadata);
+            s3Client.putObject(bucketName, outObject, pdfInputStream, metadata);
             response.put("statusCode", 200);
             response.put("body", "File updated and uploaded successfully");
         } catch (IOException | DocumentException e) {
