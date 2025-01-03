@@ -95,8 +95,8 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
 
             // Define the new object key for the PDF
             String pdfKey = objectKey.replace(".txt", ".pdf");
-             pdfKey = objectKey.replace("input/", "output/");
-            context.getLogger().log("Uploading the PDF to S3");
+             pdfKey = pdfKey.replace("input/", "output/");
+            context.getLogger().log("Uploading the PDF to S3: " + pdfKey);
 
             // Upload the PDF back to S3 with content length
             byte[] pdfBytes = pdfOutputStream.toByteArray();
