@@ -60,6 +60,7 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
             context.getLogger().log("Starting the conversion of the file to PDF");
 
             // Create a PDF from the text content
+            fileContent = fileContent.replace("\r", "");
             PDDocument document = new PDDocument();
             PDPage page = new PDPage();
             document.addPage(page);
