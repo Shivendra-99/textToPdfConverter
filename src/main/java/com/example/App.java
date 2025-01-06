@@ -17,9 +17,11 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -78,12 +80,12 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
             context.getLogger().log("Starting the download of the file from S3");
             S3Object s3Object = s3Client.getObject(bucketName, objectKey);
             S3ObjectInputStream s3InputStream = s3Object.getObjectContent();
-            String fileContent = new String(s3InputStream.readAllBytes(), StandardCharsets.UTF_8);
-
+            //String fileContent = new String(s3InputStream.readAllBytes(), StandardCharsets.UTF_8);
+            BufferedReader fileContent = new BufferedReader(new InputStreamReader(s3InputStream, StandardCharsets.UTF_8));
             context.getLogger().log("Starting the conversion of the file to PDF");
 
             // Create a PDF from the text content
-            fileContent = fileContent.replace("\r", "");
+           // fileContent = fileContent.replace("\r", "");
             PDDocument document = new PDDocument();
             PDPage page = new PDPage();
             document.addPage(page);
@@ -97,8 +99,9 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
 
             contentStream.beginText();
             contentStream.newLineAtOffset(startX, startY);
-
-            for (String line : fileContent.split("\n")) {
+            String line;
+            while ( (line=fileContent.readLine()) != null) {
+                line=line.replace("\r", "");
                 if (yPosition <= margin) {
                     contentStream.endText();
                     contentStream.close();
