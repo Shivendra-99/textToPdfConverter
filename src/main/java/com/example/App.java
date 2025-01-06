@@ -79,72 +79,71 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
             // Download the file from S3
             context.getLogger().log("Starting the download of the file from S3");
             S3Object s3Object = s3Client.getObject(bucketName, objectKey);
-            S3ObjectInputStream s3InputStream = s3Object.getObjectContent();
-            //String fileContent = new String(s3InputStream.readAllBytes(), StandardCharsets.UTF_8);
-            BufferedReader fileContent = new BufferedReader(new InputStreamReader(s3InputStream, StandardCharsets.UTF_8));
-            context.getLogger().log("Starting the conversion of the file to PDF");
+            try (S3ObjectInputStream s3InputStream = s3Object.getObjectContent();
+                 BufferedReader fileContent = new BufferedReader(new InputStreamReader(s3InputStream, StandardCharsets.UTF_8))) {
 
-            // Create a PDF from the text content
-           // fileContent = fileContent.replace("\r", "");
-            PDDocument document = new PDDocument();
-            PDPage page = new PDPage();
-            document.addPage(page);
-            PDPageContentStream contentStream = new PDPageContentStream(document, page);
-            contentStream.setFont(PDType1Font.HELVETICA, 12);
-            float margin = 50;
-            float yPosition = page.getMediaBox().getHeight() - margin;
-            float leading = 14.5f;
-            float startX = margin;
-            float startY = yPosition;
+                context.getLogger().log("Starting the conversion of the file to PDF");
 
-            contentStream.beginText();
-            contentStream.newLineAtOffset(startX, startY);
-            String line;
-            while ( (line=fileContent.readLine()) != null) {
-                line=line.replace("\r", "");
-                if (yPosition <= margin) {
-                    contentStream.endText();
-                    contentStream.close();
-                    page = new PDPage();
-                    document.addPage(page);
-                    contentStream = new PDPageContentStream(document, page);
-                    contentStream.setFont(PDType1Font.HELVETICA, 12);
-                    yPosition = page.getMediaBox().getHeight() - margin;
-                    contentStream.beginText();
-                    contentStream.newLineAtOffset(startX, startY);
+                // Create a PDF from the text content
+                PDDocument document = new PDDocument();
+                PDPage page = new PDPage();
+                document.addPage(page);
+                PDPageContentStream contentStream = new PDPageContentStream(document, page);
+                contentStream.setFont(PDType1Font.HELVETICA, 12);
+                float margin = 50;
+                float yPosition = page.getMediaBox().getHeight() - margin;
+                float leading = 14.5f;
+                float startX = margin;
+                float startY = yPosition;
+
+                contentStream.beginText();
+                contentStream.newLineAtOffset(startX, startY);
+                String line;
+                while ((line = fileContent.readLine()) != null) {
+                    line = line.replace("\r", "");
+                    if (yPosition <= margin) {
+                        contentStream.endText();
+                        contentStream.close();
+                        page = new PDPage();
+                        document.addPage(page);
+                        contentStream = new PDPageContentStream(document, page);
+                        contentStream.setFont(PDType1Font.HELVETICA, 12);
+                        yPosition = page.getMediaBox().getHeight() - margin;
+                        contentStream.beginText();
+                        contentStream.newLineAtOffset(startX, startY);
+                    }
+                    contentStream.showText(line);
+                    contentStream.newLineAtOffset(0, -leading);
+                    yPosition -= leading;
                 }
+                contentStream.endText();
+                contentStream.close();
 
-                contentStream.showText(line);
-                contentStream.newLineAtOffset(0, -leading);
-                yPosition -= leading;
+                ByteArrayOutputStream pdfOutputStream = new ByteArrayOutputStream();
+                document.save(pdfOutputStream);
+                document.close();
+
+                context.getLogger().log("PDF conversion completed");
+
+                // Define the new object key for the PDF
+                String pdfKey = objectKey.replace(".txt", ".pdf");
+                pdfKey = pdfKey.replace("input", "output");
+
+                context.getLogger().log("Uploading the PDF to S3");
+
+                // Upload the PDF back to S3 with content length
+                byte[] pdfBytes = pdfOutputStream.toByteArray();
+                ByteArrayInputStream pdfInputStream = new ByteArrayInputStream(pdfBytes);
+                ObjectMetadata metadata = new ObjectMetadata();
+                metadata.setContentLength(pdfBytes.length);
+                metadata.setContentType("application/pdf");
+                s3Client.putObject(bucketName, pdfKey, pdfInputStream, metadata);
+
+                context.getLogger().log("PDF uploaded to S3 successfully");
+
+                response.put("statusCode", 200);
+                response.put("body", "File converted and uploaded successfully");
             }
-
-            contentStream.endText();
-            contentStream.close();
-            ByteArrayOutputStream pdfOutputStream = new ByteArrayOutputStream();
-            document.save(pdfOutputStream);
-            document.close();
-
-            context.getLogger().log("PDF conversion completed");
-
-            // Define the new object key for the PDF
-            String pdfKey = objectKey.replace(".txt", ".pdf");
-            pdfKey=pdfKey.replace("input", "output");
-
-            context.getLogger().log("Uploading the PDF to S3");
-
-            // Upload the PDF back to S3 with content length
-            byte[] pdfBytes = pdfOutputStream.toByteArray();
-            ByteArrayInputStream pdfInputStream = new ByteArrayInputStream(pdfBytes);
-            ObjectMetadata metadata = new ObjectMetadata();
-            metadata.setContentLength(pdfBytes.length);
-            metadata.setContentType("application/pdf");
-            s3Client.putObject(bucketName, pdfKey, pdfInputStream, metadata);
-
-            context.getLogger().log("PDF uploaded to S3 successfully");
-
-            response.put("statusCode", 200);
-            response.put("body", "File converted and uploaded successfully");
         } catch (IOException e) {
             context.getLogger().log("Error during PDF conversion or upload: " + e.getMessage());
             response.put("statusCode", 500);
@@ -158,71 +157,81 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
     }
 
     public Map<String, Object> updateThePDFFile(String outObject, Context context, String bucketName, String objectKey,
-             Map<String, Object> response) {
+                                                Map<String, Object> response) {
         try {
-
             context.getLogger().log("inside update pdf method");
 
             // Reading the text file content from s3
             S3Object Texts3Objects = s3Client.getObject(bucketName, objectKey);
-            S3ObjectInputStream s3InputStreams = Texts3Objects.getObjectContent();
-            String TextfileContent = new String(s3InputStreams.readAllBytes(), StandardCharsets.UTF_8);
-            context.getLogger().log("Text File content: " + TextfileContent);
-            s3InputStreams.close();
-            // Downloading and Reading the PDF file content from s3
-            S3Object PDFs3Object = s3Client.getObject(bucketName, outObject);
-            S3ObjectInputStream s3InputStream = PDFs3Object.getObjectContent();
-            PDDocument document = PDDocument.load(s3InputStream);
-            s3InputStream.close();
-            // Updating the PDF content
-            context.getLogger().log("Updating pdf content " + new String(s3InputStream.readAllBytes(), StandardCharsets.UTF_8));
-            PDPage page = new PDPage();
-            document.addPage(page);
-            PDPageContentStream contentStream = new PDPageContentStream(document, page);
-            contentStream.setFont(PDType1Font.HELVETICA, 12); 
-            float margin = 50; 
-            float yPosition = page.getMediaBox().getHeight() - margin; 
-            float leading = 14.5f; 
-            float startX = margin; 
-            float startY = yPosition;
-            contentStream.beginText(); 
-            contentStream.newLineAtOffset(startX, startY);
+            try (S3ObjectInputStream s3InputStreams = Texts3Objects.getObjectContent();
+                 BufferedReader fileContent = new BufferedReader(new InputStreamReader(s3InputStreams, StandardCharsets.UTF_8))) {
 
-            for (String line : TextfileContent.split("\n")) { 
-                if (yPosition <= margin) { 
-                    contentStream.endText(); 
-                    contentStream.close(); 
-                    page = new PDPage(); 
-                    document.addPage(page); 
-                    contentStream = new PDPageContentStream(document, page); 
-                    contentStream.setFont(PDType1Font.HELVETICA, 12); 
-                    yPosition = page.getMediaBox().getHeight() - margin; 
-                    contentStream.beginText(); 
-                    contentStream.newLineAtOffset(startX, startY); 
-                } contentStream.showText(line); 
-                contentStream.newLineAtOffset(0, -leading); 
-                yPosition -= leading; 
-            } 
-            contentStream.endText(); 
-            contentStream.close();
-            ByteArrayOutputStream pdfOutputStream = new ByteArrayOutputStream(); 
-            document.save(pdfOutputStream); 
-            document.close(); 
-            context.getLogger().log("PDF modification completed");
+                context.getLogger().log("Text File content read successfully");
 
-            // Uploading the updated PDF to S3
-            byte[] pdfBytes = pdfOutputStream.toByteArray();
-            ByteArrayInputStream pdfInputStream = new ByteArrayInputStream(pdfBytes);
-            ObjectMetadata metadata = new ObjectMetadata();
-            metadata.setContentLength(pdfBytes.length);
-            metadata.setContentType("application/pdf");
-            s3Client.putObject(bucketName, outObject, pdfInputStream, metadata);
-            response.put("statusCode", 200);
-            response.put("body", "File updated and uploaded successfully"+pdfOutputStream.toByteArray().toString());
+                // Downloading and Reading the PDF file content from s3
+                context.getLogger().log("Starting the download of the PDF file from S3");
+                S3Object PDFs3Object = s3Client.getObject(bucketName, outObject);
+                try (S3ObjectInputStream s3InputStream = PDFs3Object.getObjectContent()) {
+                    PDDocument document = PDDocument.load(s3InputStream);
+
+                    // Updating the PDF content
+                    context.getLogger().log("Starting the update of the PDF file");
+                    PDPage page = new PDPage();
+                    document.addPage(page);
+                    PDPageContentStream contentStream = new PDPageContentStream(document, page);
+                    contentStream.setFont(PDType1Font.HELVETICA, 12);
+                    float margin = 50;
+                    float yPosition = page.getMediaBox().getHeight() - margin;
+                    float leading = 14.5f;
+                    float startX = margin;
+                    float startY = yPosition;
+                    contentStream.beginText();
+                    contentStream.newLineAtOffset(startX, startY);
+                    String line;
+                    while ((line = fileContent.readLine()) != null) {
+                        line = line.replace("\r", "");
+                        if (yPosition <= margin) {
+                            contentStream.endText();
+                            contentStream.close();
+                            page = new PDPage();
+                            document.addPage(page);
+                            contentStream = new PDPageContentStream(document, page);
+                            contentStream.setFont(PDType1Font.HELVETICA, 12);
+                            yPosition = page.getMediaBox().getHeight() - margin;
+                            contentStream.beginText();
+                            contentStream.newLineAtOffset(startX, startY);
+                        }
+                        contentStream.showText(line);
+                        contentStream.newLineAtOffset(0, -leading);
+                        yPosition -= leading;
+                    }
+                    contentStream.endText();
+                    contentStream.close();
+
+                    ByteArrayOutputStream pdfOutputStream = new ByteArrayOutputStream();
+                    document.save(pdfOutputStream);
+                    document.close();
+
+                    context.getLogger().log("PDF modification completed");
+
+                    // Upload the updated PDF to S3
+                    byte[] pdfBytes = pdfOutputStream.toByteArray();
+                    ByteArrayInputStream pdfInputStream = new ByteArrayInputStream(pdfBytes);
+                    ObjectMetadata metadata = new ObjectMetadata();
+                    metadata.setContentLength(pdfBytes.length);
+                    metadata.setContentType("application/pdf");
+                    s3Client.putObject(bucketName, outObject, pdfInputStream, metadata);
+
+                    context.getLogger().log("PDF uploaded to S3 successfully");
+
+                    response.put("statusCode", 200);
+                    response.put("body", "File updated and uploaded successfully");
+                }
+            }
         } catch (IOException e) {
             context.getLogger().log("Error during PDF conversion or upload from update pdf: " + e.getMessage());
             response.put("statusCode", 500);
-            response.put("body", "Error from update pdf : " + e.getMessage());
+            response.put("body", "Error from update pdf: " + e.getMessage());
         } catch (Exception e) {
             context.getLogger().log("General error from update pdf: " + e.getMessage());
             response.put("statusCode", 400);
