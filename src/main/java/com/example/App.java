@@ -128,7 +128,8 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
             context.getLogger().log("PDF conversion completed");
 
             // Define the new object key for the PDF
-            String pdfKey = objectKey.replace(".txt", ".pdf").replace("/input", "/output");
+            String pdfKey = objectKey.replace(".txt", ".pdf");
+            pdfKey=pdfKey.replace("input", "output");
 
             context.getLogger().log("Uploading the PDF to S3");
 
