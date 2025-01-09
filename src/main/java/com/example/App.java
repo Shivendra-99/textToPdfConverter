@@ -72,7 +72,7 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
 
             Map<String, AttributeValue> requestMap = new HashMap<>();
             String vendorName = objectKey.replace("input/", "");
-            vendorName = vendorName.replace(".txt", "").substring(0, 3);
+            vendorName = vendorName.replace(".txt", "").substring(0, 4);
 
             context.getLogger().log("Vendor name: " + vendorName);
 
@@ -99,7 +99,7 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
                     String KeyContains = key.split("/")[1];
                     String objectKeyContains = objectKey.split("/")[1];
 
-                    if (KeyContains.startsWith(objectKeyContains.substring(0, 3))) {
+                    if (KeyContains.startsWith(objectKeyContains.substring(0, 4))) {
                         return updateThePDFFile(key, context, bucketName, objectKey, response,"output/"+filename+".pdf");
                     }
                 }
