@@ -74,7 +74,7 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
             String vendorName = objectKey.replace("input/", "");
             vendorName = vendorName.replace(".txt", "").substring(0, 3);
 
-            requestMap.put("vendorName", AttributeValue.builder().n(vendorName).build());
+            requestMap.put("vendorName", AttributeValue.builder().s(vendorName).build());
 
             GetItemRequest getItemRequest = GetItemRequest.builder().tableName("VendorInfomation").key(requestMap)
                     .build();
