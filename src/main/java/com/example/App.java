@@ -12,6 +12,12 @@ import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.joda.JodaModule;
+
+import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
+import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
+import software.amazon.awssdk.services.dynamodb.model.GetItemRequest;
+import software.amazon.awssdk.services.dynamodb.model.GetItemResponse;
+
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -32,6 +38,7 @@ import java.util.stream.Collectors;
 public class App implements RequestHandler<S3Event, Map<String, Object>> {
 
     private final AmazonS3 s3Client = AmazonS3ClientBuilder.defaultClient();
+    private final DynamoDbClient dynamoDbClient = DynamoDbClient.builder().build();
     private final ObjectMapper objectMapper;
 
     public App() {
@@ -63,16 +70,34 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
             List<String> keys = result.getObjectSummaries().stream().map(s3ObjectSummary -> s3ObjectSummary.getKey())
                     .collect(Collectors.toList());
 
-            for (String key : keys) {
-                if (key.equals("output/")) {
-                    continue;
-                }
-                context.getLogger().log("Key: " + key);
-                String KeyContains = key.split("/")[1];
-                String objectKeyContains = objectKey.split("/")[1];
+            Map<String, AttributeValue> requestMap = new HashMap<>();
+            String vendorName = objectKey.replace("input/", "");
+            vendorName = vendorName.replace(".txt", "").substring(0, 3);
 
-                if (KeyContains.startsWith(objectKeyContains.substring(0, 3))) {
-                    return updateThePDFFile(key, context, bucketName, objectKey, response);
+            requestMap.put("vendorName", AttributeValue.builder().n(vendorName).build());
+
+            GetItemRequest getItemRequest = GetItemRequest.builder().tableName("VendorInfomation").key(requestMap)
+                    .build();
+            GetItemResponse getItemResponse = dynamoDbClient.getItem(getItemRequest);
+            Map<String, AttributeValue> returnedValue = getItemResponse.item();
+
+            if (returnedValue!= null && !returnedValue.isEmpty()) {
+                context.getLogger().log("Vendor found in the database");
+                for (String key : keys) {
+                    if (key.equals("output/")) {
+                        continue;
+                    }
+                    String filename = returnedValue.get("filename").s();
+
+                    context.getLogger().log("Checking pdf file if already exists in the out bucket");
+                
+                    context.getLogger().log("Key: " + key);
+                    String KeyContains = key.split("/")[1];
+                    String objectKeyContains = objectKey.split("/")[1];
+
+                    if (KeyContains.startsWith(objectKeyContains.substring(0, 3))) {
+                        return updateThePDFFile(key, context, bucketName, objectKey, response,"output/"+filename+".pdf");
+                    }
                 }
             }
 
@@ -80,7 +105,8 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
             context.getLogger().log("Starting the download of the file from S3");
             S3Object s3Object = s3Client.getObject(bucketName, objectKey);
             try (S3ObjectInputStream s3InputStream = s3Object.getObjectContent();
-                 BufferedReader fileContent = new BufferedReader(new InputStreamReader(s3InputStream, StandardCharsets.UTF_8))) {
+                    BufferedReader fileContent = new BufferedReader(
+                            new InputStreamReader(s3InputStream, StandardCharsets.UTF_8))) {
 
                 context.getLogger().log("Starting the conversion of the file to PDF");
 
@@ -97,6 +123,7 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
                 float startY = yPosition;
 
                 contentStream.beginText();
+                contentStream.setHorizontalScaling(startY); // Set horizontal scaling
                 contentStream.newLineAtOffset(startX, startY);
                 String line;
                 while ((line = fileContent.readLine()) != null) {
@@ -157,14 +184,15 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
     }
 
     public Map<String, Object> updateThePDFFile(String outObject, Context context, String bucketName, String objectKey,
-                                                Map<String, Object> response) {
+            Map<String, Object> response, String DBfilename) {
         try {
             context.getLogger().log("inside update pdf method");
 
             // Reading the text file content from s3
             S3Object Texts3Objects = s3Client.getObject(bucketName, objectKey);
             try (S3ObjectInputStream s3InputStreams = Texts3Objects.getObjectContent();
-                 BufferedReader fileContent = new BufferedReader(new InputStreamReader(s3InputStreams, StandardCharsets.UTF_8))) {
+                    BufferedReader fileContent = new BufferedReader(
+                            new InputStreamReader(s3InputStreams, StandardCharsets.UTF_8))) {
 
                 context.getLogger().log("Text File content read successfully");
 
@@ -220,7 +248,7 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
                     ObjectMetadata metadata = new ObjectMetadata();
                     metadata.setContentLength(pdfBytes.length);
                     metadata.setContentType("application/pdf");
-                    s3Client.putObject(bucketName, outObject, pdfInputStream, metadata);
+                    s3Client.putObject(bucketName, DBfilename, pdfInputStream, metadata);
 
                     context.getLogger().log("PDF uploaded to S3 successfully");
 
