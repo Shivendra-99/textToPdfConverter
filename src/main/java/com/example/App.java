@@ -91,7 +91,7 @@ public class App implements RequestHandler<S3Event, Map<String, Object>> {
                     if (key.equals("output/")) {
                         continue;
                     }
-                    String filename = returnedValue.get("filename").s();
+                    String filename = returnedValue.get("fileName").s();
 
                     context.getLogger().log("Checking pdf file if already exists in the out bucket");
                 
